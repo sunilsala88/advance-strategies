@@ -28,15 +28,15 @@ async def function2():
     await asyncio.sleep(2)  # Simulate a non-blocking I/O operation
     print("End2 asyncio coroutine")
 
-start_time = time.time()
-asyncio.run(function1())
-asyncio.run(function2())
-print(f"Total time: {time.time() - start_time} seconds")
+# start_time = time.time()
+# asyncio.run(function1())
+# asyncio.run(function2())
+# print(f"Total time: {time.time() - start_time} seconds")
 
-# async def main():
-#     start_time = time.time()
-#     await asyncio.gather(function1(), function2())
-#     print(f"Total time: {time.time() - start_time} seconds")
+async def main():
+    start_time = time.time()
+    await asyncio.gather(function1(), function2())
+    print(f"Total time: {time.time() - start_time} seconds")
 
-# if __name__ == "__main__":
-#     asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
