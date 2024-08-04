@@ -235,6 +235,108 @@ def pending_tick_handler(t):
     # print(name,times,price)
     renkoOperation(name,price)
 
+# Define the asynchronous function to request historical data
+async def request_historical_data(contract,interval,duration):
+    bars =await ib.reqHistoricalDataAsync(
+    contract, endDateTime='', durationStr=f'{duration} D',
+    barSizeSetting=interval, whatToShow='MIDPOINT',useRTH=False,formatDate=1)
+    df = util.df(bars)
+    print(df)
+
+    df['sma1']= ta.sma(df.close,10)
+    df['sma2']= ta.sma(df.close,20)
+    df['ema200']=ta.ema(df.close,200)
+    output=ta.macd(df.close)
+    df['MACD']=output[f'MACD_12_26_9']
+    df['Signal']=output[f'MACDs_12_26_9']
+    df['atr']=ta.atr(df.high,df.low,df.close)
+    df.set_index('date',inplace=True)
+    return df
+
+
+
+
+async def main_strategy_code():
+    # Your custom code here
+    global tickers,renko_param,macd_xover,contract_objects
+    print("inside main strategy")
+    pos=await ib.reqPositionsAsync()
+    print(pos)
+    if len(pos)==0:
+        pos_df=pd.DataFrame([])
+    else:
+        pos_df=util.df(pos)
+        pos_df['name']=[cont.symbol for cont in pos_df['contract']]
+        pos_df=pos_df[pos_df['position']>0]
+    print(pos_df)
+    ord=await ib.reqOpenOrdersAsync()
+    if len(ord)==0:
+        ord_df=pd.DataFrame([])
+    else:
+        ord_df=util.df(ord)
+        print(ord_df)
+    print(ord_df)
+
+    for ticker in tickers:
+        print('ticker name is',ticker,'################')
+        ticker_contract=contract_objects[ticker]
+
+        hist_df=await request_historical_data(ticker_contract,'1 min',4)
+        print(hist_df)
+        capital=int(float([v for v in ib.accountValues() if v.tag == 'AvailableFunds' ][0].value))
+        print(capital)
+        quantity=int(capital/hist_df.close.iloc[-1])
+        print(quantity)
+        macd_xover_refresh(hist_df,ticker)
+        print('renko parameter',renko_param[ticker])
+        # print('latest price',latest_price[ticker])
+        if quantity==0:
+            print('we dont have enough money so we cannot trade')
+            continue
+
+        if pos_df.empty:
+            print('we dont have any position')
+            await strategy(hist_df,ticker)
+
+
+        elif len(pos_df)!=0 and ticker not in pos_df['name'].tolist():
+            print('we have some position but current ticker is not in position')
+            await strategy(hist_df,ticker)
+        elif len(pos_df)!=0 and ticker in pos_df["name"].tolist():
+            print('we have some position and current ticker is in position')
+
+            if pos_df[pos_df["name"]==ticker]["position"].values[0] == 0:
+                print('we have current ticker in position but quantity is 0')
+                await strategy(hist_df,ticker)
+
+            elif pos_df[pos_df["name"]==ticker]["position"].values[0] > 0  :
+                print('we have current ticker in position and is long')
+                sell_condition=macd_xover[ticker] == "bearish" and renko_param[ticker]["brick"] <=-2
+                current_balance=int(float([v for v in ib.accountValues() if v.tag == 'AvailableFunds' ][0].value))
+                if current_balance>hist_df.close.iloc[-1]:
+                    if sell_condition:
+                        print('sell condition satisfied')
+                        await close_ticker_postion(ticker)
+                        await close_ticker_open_orders(ticker)
+                        await trade_sell_stocks(ticker,hist_df.close.iloc[-1])
+          
+
+
+            elif pos_df[pos_df["name"]==ticker]["position"].values[0] < 0 :
+                print('we have current ticker in position and is short')
+                buy_condition=buy_condition=macd_xover[ticker] == "bullish" and renko_param[ticker]["brick"] >=2
+                current_balance=int(float([v for v in ib.accountValues() if v.tag == 'AvailableFunds' ][0].value))
+                if current_balance>hist_df.close.iloc[-1]:
+                    if buy_condition:
+                        print('buy condiiton satisfied')
+                        await close_ticker_postion(ticker)
+                        await close_ticker_open_orders(ticker)
+                        await trade_buy_stocks(ticker,hist_df.close.iloc[-1])
+
+            else:
+                print('trail condition not met')
+
+
 
 
 
@@ -283,6 +385,8 @@ for tick in tickers:
 ib.newOrderEvent += order_open_handler
 ib.orderStatusEvent += order_open_handler
 ib.cancelOrderEvent += order_open_handler
+
+
 
 
 

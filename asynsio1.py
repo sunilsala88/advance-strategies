@@ -21,11 +21,13 @@ import time
 async def function1():
     print("Start asyncio coroutine")
     await asyncio.sleep(2)  # Simulate a non-blocking I/O operation
+    time.sleep(2)
     print("End asyncio coroutine")
 
 async def function2():
     print("Start2 asyncio coroutine")
     await asyncio.sleep(2)  # Simulate a non-blocking I/O operation
+    # time.sleep(2)
     print("End2 asyncio coroutine")
 
 # start_time = time.time()
@@ -40,3 +42,6 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+#3.12.3
