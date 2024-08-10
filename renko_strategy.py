@@ -256,6 +256,29 @@ async def request_historical_data(contract,interval,duration):
 
 
 
+async def strategy(data,ticker):
+    global renko_param,macd_xover,latest_price
+    print('inside strategy')
+    
+    buy_condition=macd_xover[ticker] == "bullish" and renko_param[ticker]["brick"] >=2
+    sell_condition=macd_xover[ticker] == "bearish" and renko_param[ticker]["brick"] <=-2
+    current_balance=int(float([v for v in ib.accountValues() if v.tag == 'AvailableFunds' ][0].value))
+    if current_balance>latest_price[ticker]:
+        if buy_condition:
+            print('buy condiiton satisfied')
+            await trade_buy_stocks(ticker,latest_price[ticker])
+        elif sell_condition:
+            print('sell condition satisfied')
+            await trade_sell_stocks(ticker,latest_price[ticker])
+        else :
+            print('no condition satisfied')
+    else:
+        print('we dont have enough money')
+        print('current balance is',current_balance,'stock price is ',data.close[-1])
+
+
+
+
 async def main_strategy_code():
     # Your custom code here
     global tickers,renko_param,macd_xover,contract_objects
@@ -302,6 +325,7 @@ async def main_strategy_code():
         elif len(pos_df)!=0 and ticker not in pos_df['name'].tolist():
             print('we have some position but current ticker is not in position')
             await strategy(hist_df,ticker)
+            
         elif len(pos_df)!=0 and ticker in pos_df["name"].tolist():
             print('we have some position and current ticker is in position')
 
@@ -316,8 +340,9 @@ async def main_strategy_code():
                 if current_balance>hist_df.close.iloc[-1]:
                     if sell_condition:
                         print('sell condition satisfied')
-                        await close_ticker_postion(ticker)
                         await close_ticker_open_orders(ticker)
+                        await close_ticker_postion(ticker)
+                        
                         await trade_sell_stocks(ticker,hist_df.close.iloc[-1])
           
 
@@ -329,8 +354,9 @@ async def main_strategy_code():
                 if current_balance>hist_df.close.iloc[-1]:
                     if buy_condition:
                         print('buy condiiton satisfied')
-                        await close_ticker_postion(ticker)
                         await close_ticker_open_orders(ticker)
+                        await close_ticker_postion(ticker)
+                        
                         await trade_buy_stocks(ticker,hist_df.close.iloc[-1])
 
             else:
