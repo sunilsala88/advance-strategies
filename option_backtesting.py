@@ -234,6 +234,7 @@ for month in range(1,7):
                             del portfolio['atm_put']
                             logging.info(str(atm_put_price)+','+str(portfolio)+','+str(money))
                             trades.write(start.strftime('%Y-%m-%d %H:%M:%S')+" , "+str(open_price)+'put'+end +","+'buy'+','+str(atm_put_price)+','+str(spot_price)+','+str(money)+'\n')
+
                     else:
                         if int(float(spot_price))>int((low)):
                             logging.info('selling atm put option ')
