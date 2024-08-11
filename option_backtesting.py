@@ -92,3 +92,51 @@ def get_nearest_expiry(current_day=datetime.now()):
 
 a=get_nearest_expiry()
 print(a)
+
+
+def get_from_database():
+    con = sqlite3.connect('option_history.db')
+    cursorObj = con.cursor()
+    cursorObj.execute('SELECT name from sqlite_master where type= "table"')
+    data= cursorObj.fetchall()
+    option_price_df={}
+    for i in data:
+        k=i[0]
+        option_price_df[k]=pd.read_sql_query(f'SELECT * FROM {k}',con)
+    return option_price_df
+
+
+
+
+year=2023
+month=1
+money=2000
+trades=open('trades.csv','w')
+trades.write('time'+","+'option_contract_name' +","+'position'+','+'option_price'+','+'underlying_price'+','+'balance'+'\n')
+
+
+start1 = datetime(year, month, 1)
+option_price_df1=get_from_database()
+option_price_df={}
+#resample 1min to 5min and store in option_price_df
+
+for i,j in option_price_df1.items():
+    if j.empty == False:
+        j=j[['datetime','open','high','low','close','volume']]
+        j['datetime']=pd.to_datetime(j['datetime'])
+        j.set_index('datetime',inplace=True)
+        ohlcv_dict = {
+            'open': 'first',
+            'high': 'max',
+            'low': 'min',
+            'close': 'last',
+            'volume': 'sum'
+        }
+        option_price_df[i]=j.resample('5min').agg(ohlcv_dict)
+        #drop nan rows
+        option_price_df[i].dropna(inplace=True)
+        #remove date before 9:15 and after 15:30
+        option_price_df[i]=option_price_df[i].between_time('09:15','15:30')
+        option_price_df[i].reset_index(inplace=True)
+
+print(option_price_df)
