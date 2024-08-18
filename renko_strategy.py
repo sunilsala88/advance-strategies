@@ -40,9 +40,9 @@ account_no='DU6327991'
 ord_validity='GTC'
 quantity_=1
 #start time
-start_hour,start_min=10,41
+start_hour,start_min=14,2
 #end time
-end_hour,end_min=14,59
+end_hour,end_min=14,10
 
 macd_xover = {}
 renko_param = {}
