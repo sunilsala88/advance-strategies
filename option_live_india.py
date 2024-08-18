@@ -1,3 +1,16 @@
+# Strategy:
+# Daily Iron Condor with easy adjustments.
+# Details:
+# This is a single-day strategy where we sell short legs for a 10c premium and buy long legs for 1-2 cents. Initially, the Iron Condor will be unbalanced. As soon as one of the short legs doubles in premium (e.g., 20c), we adjust the other side’s short leg to match the 20c premium. We set a Stop Loss for the first short leg at 40c. When it hits 40c, we then place a stop loss on the remaining short leg at 20c.
+# Rules:
+# 1. Short a call and put at around 10 cents and buy a call and put at 1-2 cents.
+# 2. When the stock price moves toward one side and the short leg of that side reaches 20c, close the other (non-breached) short leg and resell a new short leg at 20c. Note: Closing that leg will already yield some profit. You will now have 2 short legs at 20c. If the non-breached side does not have a 20c premium at least 2 strikes away, do not roll that side as it may create a narrow Iron Condor, increasing risk if the market reverses. In such cases, close the short leg on the breached side at 20c, which may result in a minor loss (-0.45%).
+# 3. Set a stop-loss at 40c on both sides.
+# 4. When a side hits 40c, close that short leg only. Leave the other leg open and set a stop loss on it at 20c.
+# 5. When the remaining leg hits 20c, close that short leg, minimizing losses.
+# 6. All trades will be fully closed daily.
+
+
 import asyncio
 from ib_insync import *
 import datetime as dt
@@ -58,12 +71,12 @@ def updat_order_csv(name,price,action,type1,stop_price):
 
 
 
-contract1=ib.qualifyContracts(Index(ticker,exchange,currency))[0]
+contract1=ib.qualifyContracts(Stock(ticker,exchange,currency))[0]
 print(contract1)
 
 
 chains = ib.reqSecDefOptParams(contract1.symbol, '', contract1.secType, contract1.conId)
-print(chains)
+
 df1=util.df(chains)
 print(df1)
 df1.to_csv(f'{ticker}_chain.csv')
@@ -74,7 +87,7 @@ strike_list=df1[(df1['exchange']==contract1.exchange) & (df1['tradingClass']==tr
 print(strike_list)
 
 current_price=ib.reqTickers(contract1)[0].last
-
+current_price=553
 print(current_price)
 new_stike_list=[i for i in strike_list if ((current_price-strike_limit )< i and i<(current_price+strike_limit))]
 
@@ -96,9 +109,9 @@ for strike in new_stike_list:
 
 
 
-print('all option contract')
+# print('all option contract')
 print(all_option_contract)
-df=pd.DataFrame(columns=['name','times','price','oi','volume','iv','delta','gamma','vega','theta','cont_right','strike'])
+df=pd.DataFrame(columns=['name','times','price','oi','volume','iv','delta','gamma','vega','theta','cont_right'])
 df['name']=all_option_contract.keys()
 df.set_index('name',inplace=True)
 
@@ -112,7 +125,6 @@ def pending_tick_handler(t):
     t=list(t)[0]
     times=t.time.replace(tzinfo=dt.timezone.utc).astimezone(tz=None)
     name=t.contract.localSymbol 
-    strike=t.contract.strike
     price=t.last if t.last else 0
     volume=t.volume if t.volume else 0
     cont_right=t.contract.right
@@ -128,7 +140,7 @@ def pending_tick_handler(t):
     else:
          iv,delta,gamma,vega,theta=(0,0,0,0,0)
 
-    l=[times,price,oi,volume,iv,delta,gamma,vega,theta,cont_right,strike]
+    l=[times,price,oi,volume,iv,delta,gamma,vega,theta,cont_right]
 
     if name:
             #updating dataframe
@@ -182,20 +194,12 @@ async def close_all_position():
     return 1
 
 
-# async def get_nearest_cent_option(df,strike,right):
-#     df1=df[df['cont_right']==right]
-
-#     option_name=(df1['price'] - cent).abs().idxmin()
-#     return option_name
-
-
-async def get_atm_option(df,price,right):
+async def get_nearest_cent_option(df,cent,right):
     df1=df[df['cont_right']==right]
-    atm_strike=round(price/100)*100
-    option_name=df1[df1['strike']==atm_strike].squeeze()
-    print('$$$$$$$')
-    print(option_name)
+    option_name=(df1['price'] - cent).abs().idxmin()
     return option_name
+
+
 
 
 pos=ib.reqPositions()
@@ -208,8 +212,6 @@ try:
 except:
     print('no data to read')
 
-
-print(pos)
 
 
 
@@ -332,34 +334,30 @@ async def main():
 
         await asyncio.sleep(1)
         # sheet['A2'].value = df
-        print(df)
-        df.to_csv('Data.csv')
+        # print(df)
         # print(dt.datetime.now())
 
         if first_trade_flag==0 and dt.datetime.now()>dt.datetime(current_time.year,current_time.month,current_time.day,start_hour,start_min):
             print('taking trade')
             
-            s=await ib.reqTickersAsync(contract1)
-            spot_price=s[0].last
-            print(spot_price)
-            short_call_option=await get_atm_option(df,spot_price,'C')
-            print(short_call_option)
+
+            short_call_option=await get_nearest_cent_option(df,short_price,'C')         
             shortlist_option['short_call_option']={'name':short_call_option,'contract':all_option_contract[short_call_option],'buy_price':df.loc[short_call_option,'price']}
 
-            short_put_option=await get_atm_option(df,spot_price,'P')
+            short_put_option=await get_nearest_cent_option(df,short_price,'P')
             shortlist_option['short_put_option']={'name':short_put_option,'contract':all_option_contract[short_put_option],'buy_price':df.loc[short_put_option,'price']}
 
-            # long_call_option=await get_nearest_cent_option(df,long_price,'C')
-            # shortlist_option['long_call_option']={'name':long_call_option,'contract':all_option_contract[long_call_option],'buy_price':df.loc[long_call_option,'price']}
+            long_call_option=await get_nearest_cent_option(df,long_price,'C')
+            shortlist_option['long_call_option']={'name':long_call_option,'contract':all_option_contract[long_call_option],'buy_price':df.loc[long_call_option,'price']}
 
-            # long_put_option=await get_nearest_cent_option(df,long_price,'P')
-            # shortlist_option['long_put_option']={'name':long_put_option,'contract':all_option_contract[long_put_option],'buy_price':df.loc[long_put_option,'price']}
+            long_put_option=await get_nearest_cent_option(df,long_price,'P')
+            shortlist_option['long_put_option']={'name':long_put_option,'contract':all_option_contract[long_put_option],'buy_price':df.loc[long_put_option,'price']}
 
 
             print('short_call_option',short_call_option,df.loc[short_call_option,'price'])
             print('short_put_option',short_put_option,df.loc[short_put_option,'price'])
-            # print("long_call_option",long_call_option,df.loc[long_call_option,'price'])
-            # print("long_put_option",long_put_option,df.loc[long_put_option,'price'])
+            print("long_call_option",long_call_option,df.loc[long_call_option,'price'])
+            print("long_put_option",long_put_option,df.loc[long_put_option,'price'])
 
             first_trade_flag=1
             shortlist_option=buy_condor(shortlist_option)
@@ -371,53 +369,56 @@ async def main():
             #check if placed order price doubled
             print('order placed')
             print(shortlist_option) 
-        #     if shortlist_option['short_call_option'].get('buy_price')*2<df.loc[shortlist_option['short_call_option'].get('name'),'price']:
-        #         shortlist_option=await manage_iron_condor(shortlist_option,'short_put_option',shortlist_option['short_call_option'].get('buy_price')*2)
-        #         first_trade_flag=2
-        #         shortlist_option['first_trade_flag']=2
-        #         store(shortlist_option)
-        #     if shortlist_option['short_put_option'].get('buy_price')*2<df.loc[shortlist_option['short_put_option'].get('name'),'price']:
-        #         shortlist_option=await manage_iron_condor(shortlist_option,'short_call_option',shortlist_option['short_put_option'].get('buy_price')*2)
-        #         first_trade_flag=2
-        #         shortlist_option['first_trade_flag']=2
-        #         store(shortlist_option)
+            if shortlist_option['short_call_option'].get('buy_price')*2<df.loc[shortlist_option['short_call_option'].get('name'),'price']:
+                shortlist_option=await manage_iron_condor(shortlist_option,'short_put_option',shortlist_option['short_call_option'].get('buy_price')*2)
+                first_trade_flag=2
+                shortlist_option['first_trade_flag']=2
+                store(shortlist_option)
+            if shortlist_option['short_put_option'].get('buy_price')*2<df.loc[shortlist_option['short_put_option'].get('name'),'price']:
+                shortlist_option=await manage_iron_condor(shortlist_option,'short_call_option',shortlist_option['short_put_option'].get('buy_price')*2)
+                first_trade_flag=2
+                shortlist_option['first_trade_flag']=2
+                store(shortlist_option)
 
-        # if first_trade_flag==2:
-        #     #place stop order on both legs
-        #     print('first trade 2')
-        #     shortlist_option=await stop_order_on_leg(shortlist_option,df)
-        #     first_trade_flag=3 
-        #     shortlist_option['first_trade_flag']=3
-        #     store(shortlist_option)
+
+        if first_trade_flag==2:
+            #place stop order on both legs
+            print('first trade 2')
+            shortlist_option=await stop_order_on_leg(shortlist_option,df)
+            first_trade_flag=3 
+            shortlist_option['first_trade_flag']=3
+            store(shortlist_option)
  
-        # if first_trade_flag==3:
-        #     print('first trade 3')
-        #     print(shortlist_option)
+
+
+        if first_trade_flag==3:
+            print('first trade 3')
+            print(shortlist_option)
        
-        #     if df.loc[shortlist_option['short_call_option'].get('name'),'price']>shortlist_option['short_call_option']['stop_price']:
-        #         updat_order_csv(shortlist_option['short_call_option'].get('name'),df.loc[shortlist_option['short_call_option'].get('name'),'price'],'BUY','STPFill',0)
-        #         shortlist_option=await change_stop_order_price(shortlist_option,'short_put_option')
-        #         first_trade_flag=4
-        #         shortlist_option['first_trade_flag']=4
-        #         store(shortlist_option)
-        #     elif df.loc[shortlist_option['short_put_option'].get('name'),'price']>shortlist_option['short_put_option']['stop_price']:
-        #         updat_order_csv(shortlist_option['short_put_option'].get('name'),df.loc[shortlist_option['short_put_option'].get('name'),'price'],'BUY','STPFill',0)
-        #         shortlist_option=await change_stop_order_price(shortlist_option,'short_call_option')
-        #         first_trade_flag=4
-        #         shortlist_option['first_trade_flag']=4
-        #         store(shortlist_option)
+            if df.loc[shortlist_option['short_call_option'].get('name'),'price']>shortlist_option['short_call_option']['stop_price']:
+                updat_order_csv(shortlist_option['short_call_option'].get('name'),df.loc[shortlist_option['short_call_option'].get('name'),'price'],'BUY','STPFill',0)
+                shortlist_option=await change_stop_order_price(shortlist_option,'short_put_option')
+                first_trade_flag=4
+                shortlist_option['first_trade_flag']=4
+                store(shortlist_option)
+            elif df.loc[shortlist_option['short_put_option'].get('name'),'price']>shortlist_option['short_put_option']['stop_price']:
+                updat_order_csv(shortlist_option['short_put_option'].get('name'),df.loc[shortlist_option['short_put_option'].get('name'),'price'],'BUY','STPFill',0)
+                shortlist_option=await change_stop_order_price(shortlist_option,'short_call_option')
+                first_trade_flag=4
+                shortlist_option['first_trade_flag']=4
+                store(shortlist_option)
    
                 
-        # if first_trade_flag==4:
-        #     print('first flag is 4')
-        #     print(shortlist_option)
+        if first_trade_flag==4:
+            print('first flag is 4')
+            print(shortlist_option)
 
 
-        # if dt.datetime.now()>dt.datetime(current_time.year,current_time.month,current_time.day,end_hour,end_min):
-        #     await close_all_orders()
-        #     await close_all_position()
-        #     ib.disconnect()
-        #     sys.exit()
+        if dt.datetime.now()>dt.datetime(current_time.year,current_time.month,current_time.day,end_hour,end_min):
+            await close_all_orders()
+            await close_all_position()
+            ib.disconnect()
+            sys.exit()
 
 
 
