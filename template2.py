@@ -1,6 +1,7 @@
 #super trend and ema strategy
 #closing greater than daily ema
 #super positive in hourly
+
 import pandas as pd
 import datetime 
 import time

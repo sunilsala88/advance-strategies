@@ -37,8 +37,8 @@ current_time=dt.datetime.now()
 first_trade_flag=0
 short_price=500
 long_price=100
-start_hour,start_min=14,39
-end_hour,end_min=14,45
+start_hour,start_min=13,55
+end_hour,end_min=14,3
 all_option_contract={}
 shortlist_option={}
 
@@ -71,7 +71,7 @@ def updat_order_csv(name,price,action,type1,stop_price):
 
 
 
-contract1=ib.qualifyContracts(Stock(ticker,exchange,currency))[0]
+contract1=ib.qualifyContracts(Index(ticker,exchange,currency))[0]
 print(contract1)
 
 
@@ -87,7 +87,7 @@ strike_list=df1[(df1['exchange']==contract1.exchange) & (df1['tradingClass']==tr
 print(strike_list)
 
 current_price=ib.reqTickers(contract1)[0].last
-current_price=553
+
 print(current_price)
 new_stike_list=[i for i in strike_list if ((current_price-strike_limit )< i and i<(current_price+strike_limit))]
 

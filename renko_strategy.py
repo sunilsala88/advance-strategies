@@ -40,9 +40,9 @@ account_no='DU6327991'
 ord_validity='GTC'
 quantity_=1
 #start time
-start_hour,start_min=14,2
+start_hour,start_min=14,1
 #end time
-end_hour,end_min=14,10
+end_hour,end_min=14,30
 
 macd_xover = {}
 renko_param = {}
@@ -129,8 +129,8 @@ def close_ticker_open_orders(ticker):
 
 
 
-def check_market_order_placed(name):
-    ord=ib.reqAllOpenOrders()
+async def check_market_order_placed(name):
+    ord=await ib.reqAllOpenOrdersAsync()
 
     if ord:
         ord_df=pd.DataFrame(ord)
@@ -151,7 +151,7 @@ def check_market_order_placed(name):
 
 
 
-def trade_sell_stocks(stock_name,stock_price,stop_price): #closing_price, quantitys=1  ????
+async def trade_sell_stocks(stock_name,stock_price): #closing_price, quantitys=1  ????
 
 
     #market order
@@ -159,7 +159,8 @@ def trade_sell_stocks(stock_name,stock_price,stop_price): #closing_price, quanti
     #market order
     contract = contract_objects[stock_name]
     # ord=MarketOrder(action='SELL',totalQuantity=1,AccountValue=account_no)
-    if check_market_order_placed(stock_name):
+    t=await check_market_order_placed(stock_name)
+    if t:
        
         ord=Order(orderId=ib.client.getReqId(),orderType='MKT',totalQuantity=quantity_,action='SELL',account=account_no,tif=ord_validity)
         trade=ib.placeOrder(contract,ord)
@@ -178,16 +179,17 @@ def trade_sell_stocks(stock_name,stock_price,stop_price): #closing_price, quanti
 
 
 
-def trade_buy_stocks(stock_name,stock_price,stop_price):
+async def trade_buy_stocks(stock_name,stock_price):
 
 
     #market order
     contract = contract_objects[stock_name]
     # ord=MarketOrder(action='BUY',totalQuantity=1)
-    if check_market_order_placed(stock_name):
+    t=await check_market_order_placed(stock_name) 
+    if t:
         ord=Order(orderId=ib.client.getReqId(),orderType='MKT',totalQuantity=quantity_,action='BUY',account=account_no,tif=ord_validity)
         trade=ib.placeOrder(contract,ord)
-        ib.sleep(1)
+        asyncio.sleep(1)
         logging.info(trade)
         logging.info('Placed market buy order')
   
@@ -232,7 +234,7 @@ def pending_tick_handler(t):
     name=t.contract.symbol 
     price=t.last if t.last else 0
     latest_price[name]=price
-    # print(name,times,price)
+    print(name,times,price)
     renkoOperation(name,price)
 
 # Define the asynchronous function to request historical data
@@ -262,6 +264,7 @@ async def strategy(data,ticker):
     
     buy_condition=macd_xover[ticker] == "bullish" and renko_param[ticker]["brick"] >=2
     sell_condition=macd_xover[ticker] == "bearish" and renko_param[ticker]["brick"] <=-2
+    buy_condition=True
     current_balance=int(float([v for v in ib.accountValues() if v.tag == 'AvailableFunds' ][0].value))
     if current_balance>latest_price[ticker]:
         if buy_condition:
@@ -336,6 +339,7 @@ async def main_strategy_code():
             elif pos_df[pos_df["name"]==ticker]["position"].values[0] > 0  :
                 print('we have current ticker in position and is long')
                 sell_condition=macd_xover[ticker] == "bearish" and renko_param[ticker]["brick"] <=-2
+                sell_condition=True
                 current_balance=int(float([v for v in ib.accountValues() if v.tag == 'AvailableFunds' ][0].value))
                 if current_balance>hist_df.close.iloc[-1]:
                     if sell_condition:
@@ -431,4 +435,6 @@ async def main():
         await main_strategy_code()
     
 
-asyncio.run(main())
+# asyncio.run(main())
+
+ib.run(main())
